@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .scanner import find_new_mp4s, mark_processed
-from .audio import convert_mp4_to_wav
+from .audio import convert_mp4_to_wav, remove_silence_from_wav
 from .transcribe import transcribe_meeting
 from .summarizer import summarize_transcript
 from .notion_writer import create_meeting_page
@@ -18,8 +18,16 @@ def process_single_meeting(mp4: Path):
     wav_path = convert_mp4_to_wav(mp4)
     print(f"[INFO] Converted to wav: {wav_path}")
 
+    # 無音除去
+    wav_path_no_silence = remove_silence_from_wav(
+        wav_path,
+        start_silence=5,
+        start_threshold_db=-40.0,
+    )
+    print(f"[INFO] Removed silence: {wav_path_no_silence}")
+
     # 1) 文字起こし（wav入力）
-    transcript_path = transcribe_meeting(wav_path, original_mp4=mp4)
+    transcript_path = transcribe_meeting(wav_path_no_silence, original_mp4=mp4)
     print("*" * 20)
     print(f"[INFO] Transcription completed: {transcript_path}")
 
