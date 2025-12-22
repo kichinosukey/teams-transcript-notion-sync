@@ -4,6 +4,7 @@ import subprocess
 
 from .config import TRANSCRIPT_DIR, WHISPER_BIN, WHISPER_MODEL
 from .scanner import mark_processed
+from .noise_filter import remove_speaker_label_noise
 
 
 def transcribe_meeting(wav_path: Path, original_mp4: Path | None = None) -> Path:
@@ -31,6 +32,11 @@ def transcribe_meeting(wav_path: Path, original_mp4: Path | None = None) -> Path
     subprocess.run(cmd, check=True)
 
     txt_path = out_prefix.with_suffix(".txt")
+    # whisper.cpp が生成した txt を読み込み、ノイズを除去して上書き保存する
+    raw_text = txt_path.read_text()
+    cleaned_text = remove_speaker_label_noise(raw_text)
+    if cleaned_text != raw_text:
+        txt_path.write_text(cleaned_text)
 
     # mp4 が渡されていれば status 更新
     if original_mp4 is not None:
