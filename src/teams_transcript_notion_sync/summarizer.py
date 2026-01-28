@@ -11,26 +11,32 @@ from .config import SUMMARY_DIR, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
 _SEP_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
 
 SUMMARY_PROMPT_TEMPLATE = """
-あなたは日本語の社内会議録を「トピック別に表で要約」する専門家です。
-以下の文字起こしから要約を作成してください。
+以下の文字起こしを読み、社内MTGの議事録要約を作成してください。
 
-【出力フォーマットの絶対ルール】
-- 出力は Markdown のテーブル「1つだけ」。テーブル以外の文章・見出し・注釈・引用・箇条書きは禁止。
-- テーブルは必ず次の2列で固定する（列の追加/削除は禁止）。
-  1) トピック
-  2) 内容
-- 1行目はヘッダ行、2行目は区切り行（---）とする。
-- 3行目以降にトピック別要約を3〜7行で書く。
-- 各セルは1〜3文で簡潔に。
-- セル内に改行は入れない。必要なら「、」「;」でつなぐ。
-- セル内で “|” を使わない（使うと列が壊れるため）。
+Speaker1 / Speaker2 は話者ラベルです。
 
-【出力例（この形式のみ）】
-| トピック | 内容 |
-|---|---|
-| 会話の内容 | … |
-| 決定事項 | … |
-| 次のステップ | … |
+【出力形式】
+- 出力は Markdown の表のみとする
+- 表の列は必ず以下の3列に固定する
+  1. トピック
+  2. 要約（議事録）
+  3. 根拠となる発言（引用）
+- 1行目はヘッダ行、2行目は区切り行（---）とする
+
+【内容ルール】
+- トピックごとに「何が話されたか」を要約する
+- 要約には誰が何を言ったかが分かるように、話者の視点差を含める
+- 引用は Speaker1 / Speaker2 を付けた原文ママ（完全一致）で記載する
+- 1行につき1トピックのみ
+- すべて時系列順に並べる
+- セル内で改行はしない（必要なら「、」「;」でつなぐ）
+- セル内で “|” を使わない（使うと列が壊れるため）
+
+【出力イメージ（構造のみ）】
+| トピック | 要約（議事録） | 根拠となる発言（引用） |
+|---|---|---|
+| 進捗共有 | Speaker1がAの進捗を報告し、Speaker2がBの遅延を共有した | "Speaker1: Aは今週中に完了見込み" / "Speaker2: Bは来週にずれそうです" |
+| 次アクション | Speaker2が対応方針を提案し、Speaker1が了承した | "Speaker2: 先にCを片付けます" / "Speaker1: それでお願いします" |
 
 ーーー ここから文字起こし ーーー
 {transcript}
@@ -66,30 +72,38 @@ def validate_and_normalize_markdown_table(text: str) -> Tuple[bool, str, str]:
         return [c.strip() for c in line.split("|")]
 
     header_cells = split_row(non_empty[0])
-    if len(header_cells) != 2:
-        return False, text, "header_not_two_columns"
+    if len(header_cells) != 3:
+        return False, text, "header_not_three_columns"
 
     data_lines = non_empty[2:]
     if not data_lines:
         return False, text, "no_data_rows"
 
-    # normalize: 各行を必ず2列に収束
+    # normalize: 各行を必ず3列に収束
     normalized_rows = []
     for line in data_lines:
         cells = split_row(line)
 
         if len(cells) == 1:
-            cells = [cells[0], ""]
-        elif len(cells) > 2:
-            cells = [cells[0], " / ".join(cells[1:])]
+            cells = [cells[0], "", ""]
+        elif len(cells) == 2:
+            cells = [cells[0], cells[1], ""]
+        elif len(cells) > 3:
+            cells = [cells[0], cells[1], " / ".join(cells[2:])]
 
         # セル内の安全化
         cells = [c.replace("\n", " ").replace("|", "｜") for c in cells]
 
-        normalized_rows.append(f"| {cells[0]} | {cells[1]} |")
+        normalized_rows.append(f"| {cells[0]} | {cells[1]} | {cells[2]} |")
 
     normalized = (
-        "\n".join(["| トピック | 内容 |", "|---|---|", *normalized_rows]).rstrip()
+        "\n".join(
+            [
+                "| トピック | 要約（議事録） | 根拠となる発言（引用） |",
+                "|---|---|---|",
+                *normalized_rows,
+            ]
+        ).rstrip()
         + "\n"
     )
 

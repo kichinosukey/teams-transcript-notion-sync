@@ -50,9 +50,9 @@ _SPEAKER_LABEL_RE = re.compile(
 )
 
 
-def remove_speaker_label_noise(text: str) -> str:
+def remove_fake_speaker_labels(text: str) -> str:
     """
-    行頭の「発話者ラベル:」ノイズを削除したテキストを返す。
+    行頭の「発話者ラベル:」ノイズ（例: おだしょー: / 吉田:）を削除したテキストを返す。
 
     Args:
         text: 文字起こし全文
@@ -94,4 +94,3 @@ def remove_speaker_label_noise(text: str) -> str:
     if text.endswith("\n"):
         result += "\n"
     return result
-
